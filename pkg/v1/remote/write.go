@@ -64,6 +64,8 @@ type writer struct {
 	// Keep track of scopes that we have already requested.
 	scopeSet map[string]struct{}
 	scopes   []string
+
+	allowMissingLocalLayers bool
 }
 
 func makeWriter(ctx context.Context, repo name.Repository, ls []v1.Layer, o *options) (*writer, error) {
@@ -95,6 +97,7 @@ func makeWriter(ctx context.Context, repo name.Repository, ls []v1.Layer, o *opt
 		predicate: o.retryPredicate,
 		scopes:    scopes,
 		scopeSet:  scopeSet,
+		allowMissingLocalLayers: o.allowMissingLocalLayers,
 	}, nil
 }
 
@@ -345,6 +348,10 @@ func (w *writer) uploadOne(ctx context.Context, l v1.Layer) error {
 			if existing {
 				size, err := l.Size()
 				if err != nil {
+					if w.allowMissingLocalLayers {
+						logs.Debug.Printf("skipping progress update for existing layer %v due to missing local content: %v", h, err)
+						return nil
+					}
 					return err
 				}
 				w.incrProgress(size)

@@ -41,6 +41,7 @@ type options struct {
 	jobs                           int
 	userAgent                      string
 	allowNondistributableArtifacts bool
+	allowMissingLocalLayers        bool
 	progress                       *progress
 	retryBackoff                   Backoff
 	retryPredicate                 retry.Predicate
@@ -275,6 +276,16 @@ func WithUserAgent(ua string) Option {
 // The default behaviour is to skip these layers
 func WithNondistributable(o *options) error {
 	o.allowNondistributableArtifacts = true
+	return nil
+}
+
+// WithAllowMissingLayer configures the remote operations to allow missing local layers
+// when the layer already exists in the remote registry.
+//
+// This is useful when pushing a manifest that references layers that are not present
+// locally but are known to exist remotely.
+func WithAllowMissingLayer(o *options) error {
+	o.allowMissingLocalLayers = true
 	return nil
 }
 

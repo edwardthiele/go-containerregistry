@@ -538,9 +538,14 @@ func (rw *repoWriter) writeLayer(ctx context.Context, l v1.Layer) error {
 		if rw.o.progress != nil {
 			size, err := l.Size()
 			if err != nil {
-				return err
+				if rw.o.allowMissingLocalLayers {
+					logs.Debug.Printf("skipping progress update for layer %v due to missing local content: %v", digest, err)
+				} else {
+					return err
+				}
+			} else {
+				rw.o.progress.total(size)
 			}
-			rw.o.progress.total(size)
 		}
 		return rw.w.uploadOne(ctx, l)
 	})

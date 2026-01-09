@@ -1617,3 +1617,63 @@ func BenchmarkWrite(b *testing.B) {
 		}
 	}
 }
+
+type missingLayer struct {
+	v1.Layer
+}
+
+func (m missingLayer) Size() (int64, error) {
+	return 0, errors.New("missing")
+}
+
+func (m missingLayer) Compressed() (io.ReadCloser, error) {
+	return nil, errors.New("missing")
+}
+
+func (m missingLayer) Digest() (v1.Hash, error) {
+	return v1.NewHash("sha256:3d7c465be28d9e1ed810c42aeb0e747b44441424f566722ba635dc93c947f30e")
+}
+
+func TestUploadOne_AllowMissingLocalLayer(t *testing.T) {
+	// Create a layer that will return an error on Size() and Compressed()
+	// but provides a Digest().
+	l := missingLayer{}
+	h, err := l.Digest()
+	if err != nil {
+		t.Fatalf("Digest() = %v", err)
+	}
+
+	expectedRepo := "allow/missing"
+	headPath := fmt.Sprintf("/v2/%s/blobs/%s", expectedRepo, h.String())
+	ctx := context.Background()
+
+	w, closer, err := setupWriter(expectedRepo, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case headPath:
+			if r.Method != http.MethodHead {
+				t.Errorf("Method; got %v, want %v", r.Method, http.MethodHead)
+			}
+			// Respond that the blob exists properly.
+			w.Header().Set("Content-Length", "100")
+			w.Header().Set("Docker-Content-Digest", h.String())
+			http.Error(w, "OK", http.StatusOK)
+		default:
+			t.Fatalf("Unexpected path: %v", r.URL.Path)
+		}
+	}))
+	if err != nil {
+		t.Fatalf("setupWriter() = %v", err)
+	}
+	defer closer.Close()
+
+	// 1. Without the option, it should fail.
+	if err := w.uploadOne(ctx, l); err == nil {
+		t.Error("uploadOne() = nil, want error")
+	}
+
+	// 2. With the option, it should succeed.
+	w.allowMissingLocalLayers = true
+	if err := w.uploadOne(ctx, l); err != nil {
+		t.Errorf("uploadOne() = %v", err)
+	}
+}
